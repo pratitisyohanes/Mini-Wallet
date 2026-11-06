@@ -1,0 +1,105 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mini_wallet_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install and test backend
+        working-directory: backend
+        run: |
+          npm ci
+          cat > .env.test <<'EOF'
+          DATABASE_URL="postgresql://postgres:postgres@localhost:5432/mini_wallet_test?schema=public"
+          JWT_SECRET=test-secret
+          JWT_EXPIRES_IN=1h
+          CORS_ORIGINS=http://localhost:5173
+          EOF
+          npm test
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      REMOTE: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+      APP_DIR: /var/www/mini-wallet
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Upload frontend build
+        run: rsync -az --delete frontend/dist/ "$REMOTE:$APP_DIR/frontend/dist/"
+
+      - name: Upload backend
+        run: |
+          rsync -az --delete \
+            --exclude node_modules --exclude '.env' --exclude '.env.*' --exclude tests \
+            backend/ "$REMOTE:$APP_DIR/backend/"
+
+      - name: Install, migrate and restart
+        run: |
+          ssh "$REMOTE" bash -s <<'EOF'
+          set -e
+          cd /var/www/mini-wallet/backend
+          npm ci
+          npx prisma migrate deploy
+          pm2 reload mini-wallet --update-env || pm2 start src/server.js --name mini-wallet
+          pm2 save
+          EOF
