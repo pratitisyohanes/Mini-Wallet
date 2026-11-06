@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TransactionType {
+  TOPUP
+  TRANSFER_IN
+  TRANSFER_OUT
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  username     String   @unique @db.VarChar(30)
+  email        String   @unique @db.VarChar(255)
+  phone        String   @unique @db.VarChar(20)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  wallet Wallet?
+
+  ownedRecipients SavedRecipient[] @relation("OwnedRecipients")
+  savedBy         SavedRecipient[] @relation("SavedBy")
+
+  @@map("users")
+}
+
+/// A user's address book for transfers. Stores the recipient's user id (not the email text),
+/// so a contact stays valid if the recipient changes their email or phone.
+/// A CHECK (owner_user_id <> recipient_user_id) constraint is added in the migration.
+model SavedRecipient {
+  id              String   @id @default(uuid()) @db.Uuid
+  ownerUserId     String   @map("owner_user_id") @db.Uuid
+  recipientUserId String   @map("recipient_user_id") @db.Uuid
+  alias           String?  @db.VarChar(50)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  owner     User @relation("OwnedRecipients", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  recipient User @relation("SavedBy", fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerUserId, recipientUserId])
+  @@index([ownerUserId, createdAt(sort: Desc)])
+  @@map("saved_recipients")
+}
+
+/// balance is stored in whole Rupiah. A CHECK (balance >= 0) constraint is added in the migration.
+model Wallet {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @map("user_id") @db.Uuid
+  balance   BigInt   @default(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user                     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions             Transaction[] @relation("WalletTransactions")
+  counterpartyTransactions Transaction[] @relation("CounterpartyTransactions")
+
+  @@map("wallets")
+}
+
+/// Ledger entry per wallet. One transfer creates two rows (TRANSFER_OUT and TRANSFER_IN) sharing a referenceId.
+model Transaction {
+  id                   String          @id @default(uuid()) @db.Uuid
+  walletId             String          @map("wallet_id") @db.Uuid
+  type                 TransactionType
+  amount               BigInt
+  balanceBefore        BigInt          @map("balance_before")
+  balanceAfter         BigInt          @map("balance_after")
+  counterpartyWalletId String?         @map("counterparty_wallet_id") @db.Uuid
+  referenceId          String          @map("reference_id") @db.Uuid
+  description          String?         @db.VarChar(100)
+  createdAt            DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  wallet             Wallet  @relation("WalletTransactions", fields: [walletId], references: [id], onDelete: Cascade)
+  counterpartyWallet Wallet? @relation("CounterpartyTransactions", fields: [counterpartyWalletId], references: [id], onDelete: SetNull)
+
+  @@index([walletId, createdAt(sort: Desc)])
+  @@index([referenceId])
+  @@map("transactions")
+}
