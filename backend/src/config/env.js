@@ -29,6 +29,9 @@ export const env = {
   appUrl: (process.env.APP_URL ?? corsOrigins[0]).replace(/\/+$/, ''),
   midtrans: {
     serverKey: midtransServerKey,
+    // New Midtrans dashboards sign notifications with a separate "Signature Secret Key".
+    // Older accounts sign with the server key itself, so that stays the fallback.
+    signatureKey: process.env.MIDTRANS_SIGNATURE_KEY?.trim() || midtransServerKey,
     isProduction: process.env.MIDTRANS_IS_PRODUCTION === 'true',
     enabled: Boolean(midtransServerKey),
   },

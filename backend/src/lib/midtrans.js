@@ -76,7 +76,7 @@ export async function getTransactionStatus(orderId) {
 
 /**
  * Checks the signature Midtrans puts on every notification:
- * SHA512(order_id + status_code + gross_amount + server key).
+ * SHA512(order_id + status_code + gross_amount + signature key).
  */
 export function isValidNotificationSignature({ order_id, status_code, gross_amount, signature_key }) {
   if (![order_id, status_code, gross_amount, signature_key].every((value) => typeof value === 'string')) {
@@ -84,7 +84,7 @@ export function isValidNotificationSignature({ order_id, status_code, gross_amou
   }
 
   const expected = createHash('sha512')
-    .update(`${order_id}${status_code}${gross_amount}${env.midtrans.serverKey}`)
+    .update(`${order_id}${status_code}${gross_amount}${env.midtrans.signatureKey}`)
     .digest('hex');
 
   const expectedBuffer = Buffer.from(expected);
