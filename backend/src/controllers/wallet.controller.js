@@ -1,4 +1,6 @@
+import { env } from '../config/env.js';
 import * as walletService from '../services/wallet.service.js';
+import { AppError } from '../utils/AppError.js';
 import { sendSuccess } from '../utils/response.js';
 import { toTransactionDto, toWalletDto } from '../utils/serializers.js';
 
@@ -12,6 +14,10 @@ export async function getWallet(req, res) {
 }
 
 export async function topUp(req, res) {
+  if (!env.allowDirectTopUp) {
+    throw new AppError(403, 'Top up langsung tidak tersedia. Gunakan pembayaran online.');
+  }
+
   const { wallet, transaction } = await walletService.topUp(req.user.id, req.validated.amount);
 
   sendSuccess(res, {

@@ -17,5 +17,8 @@ export const PAGINATION = {
 
 export const TRANSACTION_TYPES = ['TOPUP', 'TRANSFER_IN', 'TRANSFER_OUT'];
 
+/** Smallest top-up paid through Midtrans, in Rupiah. Some payment methods reject smaller amounts. */
+export const MIN_PAYMENT_AMOUNT = 10_000;
+
 /** Number of days in the dashboard cash-flow chart. */
 export const SUMMARY_DAYS = 7;

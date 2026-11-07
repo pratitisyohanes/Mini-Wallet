@@ -1,27 +1,59 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { parseApiError } from '../api/client.js';
+import * as paymentsApi from '../api/payments.api.js';
 import * as walletApi from '../api/wallet.api.js';
 import { useSubmitAction } from '../hooks/useSubmitAction.js';
 import { formatRupiah } from '../utils/format.js';
 import { getAmountError } from '../validators/amount.js';
 import Alert from './Alert.jsx';
+import Spinner from './Spinner.jsx';
 import SubmitButton from './SubmitButton.jsx';
 import TextField from './TextField.jsx';
 
 const QUICK_AMOUNTS = [50_000, 100_000, 250_000, 500_000, 1_000_000];
 
+/**
+ * With Midtrans enabled, the form creates an order and sends the user to the Midtrans
+ * payment page; the balance changes only after Midtrans confirms the payment.
+ * Without Midtrans it falls back to the instant demo top-up.
+ */
 export default function TopUpForm({ onSuccess }) {
+  const [config, setConfig] = useState(null);
   const [amount, setAmount] = useState('');
   const [isAmountTouched, setIsAmountTouched] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
-  const amountError = getAmountError(amount);
+  useEffect(() => {
+    let isActive = true;
+    paymentsApi
+      .getPaymentConfig()
+      .then((value) => isActive && setConfig(value))
+      .catch(() => isActive && setConfig({ midtransEnabled: false, directTopUpEnabled: true, minAmount: 0 }));
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const usesMidtrans = Boolean(config?.midtransEnabled);
+  const minAmount = usesMidtrans ? config.minAmount : 0;
+
+  let amountError = getAmountError(amount);
+  if (!amountError && Number(amount) < minAmount) {
+    amountError = `Nominal minimal ${formatRupiah(minAmount)} untuk pembayaran online.`;
+  }
 
   const { run: submitTopUp, isSubmitting } = useSubmitAction(async () => {
     setErrorMessage('');
     setSuccessMessage('');
     try {
+      if (usesMidtrans) {
+        const payment = await paymentsApi.createTopUpPayment(amount.trim());
+        paymentsApi.rememberPendingOrder(payment.orderId);
+        window.location.assign(payment.redirectUrl);
+        return;
+      }
+
       const { wallet, transaction } = await walletApi.topUp(amount.trim());
       setAmount('');
       setIsAmountTouched(false);
@@ -44,11 +76,27 @@ export default function TopUpForm({ onSuccess }) {
     setIsAmountTouched(true);
   }
 
+  if (!config) {
+    return (
+      <div className="flex items-center gap-2 py-6 text-sm text-slate-500">
+        <Spinner /> Memuat metode top up...
+      </div>
+    );
+  }
+
+  if (!usesMidtrans && !config.directTopUpEnabled) {
+    return <Alert>Top up sedang tidak tersedia. Silakan coba lagi nanti.</Alert>;
+  }
+
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
       <div>
         <h2 id="topup-title" className="text-lg font-semibold">Top up saldo</h2>
-        <p className="text-sm text-slate-500">Tambahkan saldo ke dompet Anda.</p>
+        <p className="text-sm text-slate-500">
+          {usesMidtrans
+            ? 'Bayar lewat transfer bank, QRIS, atau e-wallet. Saldo bertambah setelah pembayaran berhasil.'
+            : 'Tambahkan saldo ke dompet Anda.'}
+        </p>
       </div>
       <TextField
         id="topup-amount"
@@ -60,7 +108,11 @@ export default function TopUpForm({ onSuccess }) {
         onChange={(event) => setAmount(event.target.value)}
         onBlur={() => setIsAmountTouched(true)}
         error={isAmountTouched || amount ? amountError : null}
-        hint="Angka bulat tanpa titik atau simbol."
+        hint={
+          usesMidtrans
+            ? `Angka bulat tanpa titik. Minimal ${formatRupiah(minAmount)}.`
+            : 'Angka bulat tanpa titik atau simbol.'
+        }
       />
       <div className="flex flex-wrap gap-2">
         {QUICK_AMOUNTS.map((value) => (
@@ -76,8 +128,12 @@ export default function TopUpForm({ onSuccess }) {
       </div>
       <Alert>{errorMessage}</Alert>
       <Alert variant="success">{successMessage}</Alert>
-      <SubmitButton isSubmitting={isSubmitting} disabled={Boolean(amountError)}>
-        Top up
+      <SubmitButton
+        isSubmitting={isSubmitting}
+        disabled={Boolean(amountError)}
+        loadingText={usesMidtrans ? 'Menyiapkan pembayaran...' : 'Memproses...'}
+      >
+        {usesMidtrans ? 'Lanjut ke pembayaran' : 'Top up'}
       </SubmitButton>
     </form>
   );

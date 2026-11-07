@@ -3,6 +3,7 @@ import AppLayout from './components/AppLayout.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
+import TopUpStatusPage from './pages/TopUpStatusPage.jsx';
 import TransactionsPage from './pages/TransactionsPage.jsx';
 import TransferPage from './pages/TransferPage.jsx';
 import ProtectedRoute from './routes/ProtectedRoute.jsx';
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/transfer" element={<TransferPage />} />
           <Route path="/transactions" element={<TransactionsPage />} />
+          <Route path="/topup/status" element={<TopUpStatusPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

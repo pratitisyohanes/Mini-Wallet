@@ -38,6 +38,19 @@ export function toRecipientDto(savedRecipient) {
   };
 }
 
+export function toPaymentDto(payment) {
+  return {
+    orderId: payment.orderId,
+    amount: Number(payment.amount),
+    status: payment.status,
+    paymentType: payment.paymentType,
+    // Only an unpaid order still needs its payment page.
+    redirectUrl: payment.status === 'PENDING' ? payment.redirectUrl : null,
+    paidAt: payment.paidAt,
+    createdAt: payment.createdAt,
+  };
+}
+
 export function toTransactionDto(transaction) {
   const counterpartyUser = transaction.counterpartyWallet?.user;
 

@@ -13,6 +13,13 @@ enum TransactionType {
   TRANSFER_OUT
 }
 
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+}
+
 model User {
   id           String   @id @default(uuid()) @db.Uuid
   username     String   @unique @db.VarChar(30)
@@ -22,7 +29,8 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  wallet Wallet?
+  wallet   Wallet?
+  payments Payment[]
 
   ownedRecipients SavedRecipient[] @relation("OwnedRecipients")
   savedBy         SavedRecipient[] @relation("SavedBy")
@@ -82,4 +90,26 @@ model Transaction {
   @@index([walletId, createdAt(sort: Desc)])
   @@index([referenceId])
   @@map("transactions")
+}
+
+/// A top-up paid through Midtrans Snap. The wallet is credited only when Midtrans reports the
+/// payment as settled, and only once: the PENDING -> PAID update is the guard against duplicates.
+/// A CHECK (amount > 0) constraint is added in the migration.
+model Payment {
+  id                    String        @id @default(uuid()) @db.Uuid
+  orderId               String        @unique @map("order_id") @db.VarChar(50)
+  userId                String        @map("user_id") @db.Uuid
+  amount                BigInt
+  status                PaymentStatus @default(PENDING)
+  redirectUrl           String?       @map("redirect_url") @db.VarChar(255)
+  paymentType           String?       @map("payment_type") @db.VarChar(50)
+  midtransTransactionId String?       @map("midtrans_transaction_id") @db.VarChar(100)
+  paidAt                DateTime?     @map("paid_at") @db.Timestamptz(6)
+  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("payments")
 }

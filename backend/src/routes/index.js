@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import authRoutes from './auth.routes.js';
+import paymentRoutes from './payment.routes.js';
 import recipientRoutes from './recipient.routes.js';
 import walletRoutes from './wallet.routes.js';
 
@@ -10,6 +11,7 @@ router.get('/health', (req, res) => {
 });
 
 router.use('/auth', authRoutes);
+router.use('/payments', paymentRoutes);
 router.use('/recipients', recipientRoutes);
 router.use('/', walletRoutes);
 

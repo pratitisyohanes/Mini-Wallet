@@ -37,32 +37,38 @@ export async function getWalletByUserId(userId) {
   return wallet;
 }
 
-export async function topUp(userId, amount) {
+/**
+ * Adds money to a wallet and records the TOPUP ledger entry. Must run inside a
+ * database transaction (`tx`) so the balance and the ledger never disagree.
+ */
+export async function creditWallet(tx, userId, amount, { referenceId = randomUUID(), description }) {
   const amountValue = BigInt(amount);
 
-  return prisma.$transaction(async (tx) => {
-    // `increment` is a single atomic UPDATE, so concurrent top-ups cannot overwrite each other.
-    const wallet = await tx.wallet.update({
-      where: { userId },
-      data: { balance: { increment: amountValue } },
-      select: walletSelect,
-    });
-
-    const transaction = await tx.transaction.create({
-      data: {
-        walletId: wallet.id,
-        type: 'TOPUP',
-        amount: amountValue,
-        balanceBefore: wallet.balance - amountValue,
-        balanceAfter: wallet.balance,
-        referenceId: randomUUID(),
-        description: 'Top up saldo',
-      },
-      select: transactionSelect,
-    });
-
-    return { wallet, transaction };
+  // `increment` is a single atomic UPDATE, so concurrent top-ups cannot overwrite each other.
+  const wallet = await tx.wallet.update({
+    where: { userId },
+    data: { balance: { increment: amountValue } },
+    select: walletSelect,
   });
+
+  const transaction = await tx.transaction.create({
+    data: {
+      walletId: wallet.id,
+      type: 'TOPUP',
+      amount: amountValue,
+      balanceBefore: wallet.balance - amountValue,
+      balanceAfter: wallet.balance,
+      referenceId,
+      description,
+    },
+    select: transactionSelect,
+  });
+
+  return { wallet, transaction };
+}
+
+export async function topUp(userId, amount) {
+  return prisma.$transaction((tx) => creditWallet(tx, userId, amount, { description: 'Top up saldo' }));
 }
 
 /**

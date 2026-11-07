@@ -5,7 +5,7 @@ import { prisma } from '../src/lib/prisma.js';
 export const app = createApp();
 
 export async function resetDatabase() {
-  await prisma.$executeRawUnsafe('TRUNCATE TABLE saved_recipients, transactions, wallets, users CASCADE');
+  await prisma.$executeRawUnsafe('TRUNCATE TABLE payments, saved_recipients, transactions, wallets, users CASCADE');
 }
 
 let userCounter = 0;
